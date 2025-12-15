@@ -28,6 +28,8 @@
 #include <string>
 #include <sstream>
 
+#include "PolygonLoops.h"   // NEW: polygon-with-holes support
+
 #include "libGDSII.h"
 
 using namespace std;
@@ -321,6 +323,35 @@ void GDSIIData::Flatten(double CoordinateLengthUnit)
 /***************************************************************/
 /***************************************************************/
 /***************************************************************/
+/* Helper: write one CLOSED ring as GMSH Points/Lines/Line Loop. */
+/* The ring is expected to be OPEN (no duplicated last point).   */
+static int WriteGMSHClosedRing(FILE *geoFile,
+                               const Loop &ring,
+                               int &NumNodes,
+                               int &NumLines,
+                               int &NumLineLoops)
+{
+  const int N = (int)ring.size();
+  if (N < 3) return -1;
+
+  const int Node0 = NumNodes;
+  for (int i = 0; i < N; ++i)
+    fprintf(geoFile, "Point(%i)={%e,%e,%e};\n",
+            NumNodes++, ring[i].x, ring[i].y, 0.0);
+
+  const int Line0 = NumLines;
+  for (int i = 0; i < N; ++i)
+    fprintf(geoFile, "Line(%i)={%i,%i};\n",
+            NumLines++, Node0 + i, Node0 + ((i + 1) % N));
+
+  const int LoopId = NumLineLoops++;
+  fprintf(geoFile, "Line Loop(%i)={", LoopId);
+  for (int i = 0; i < N; ++i)
+    fprintf(geoFile, "%i%s", Line0 + i, (i == N - 1) ? "};\n" : ",");
+
+  return LoopId;
+}
+
 void WriteGMSHEntity(Entity E, int Layer,
                      const char *geoFileName, FILE **pgeoFile,
                      const char *ppFileName, FILE **pppFile)
@@ -341,22 +372,54 @@ void WriteGMSHEntity(Entity E, int Layer,
      fprintf(geoFile,"// Layer %i %s \n",Layer,E.Label);
      if (!geoFile) { fprintf(stderr,"could not open file %s (aborting)\n",geoFileName); exit(1); }
 
-     static int NumLines=0, NumSurfaces=0, NumNodes=0;
+     static int NumLines = 1, NumLineLoops = 1, NumNodes = 1, NumSurfaces = 1;
 
-     int Node0 = NumNodes, Line0=NumLines, NXY = E.XY.size() / 2;
-    
-     for(int n=0; n<NXY; n++)
-      fprintf(geoFile,"Point(%i)={%e,%e,%e};\n",NumNodes++,E.XY[2*n+0],E.XY[2*n+1],0.0);
-     for(int n=0; n<NXY-1; n++)
-      fprintf(geoFile,"Line(%i)={%i,%i};\n",NumLines++,Node0+n,Node0+((n+1)%NXY));
+     /* Open entities: keep original behavior (polyline). */
+     if (!E.Closed)
+      {
+        int NXY = (int)(E.XY.size() / 2);
+        int Node0 = NumNodes;
 
-     if (E.Closed)
-      { fprintf(geoFile,"Line(%i)={%i,%i};\n",NumLines++,Node0+NXY-1,Node0);
-        fprintf(geoFile,"Line Loop(%i)={",NumSurfaces++);
         for(int n=0; n<NXY; n++)
-         fprintf(geoFile,"%i%s",Line0+n,(n==NXY-1) ? "};\n" : ",");
-        fprintf(geoFile,"Plane Surface(%i)={%i};\n",NumSurfaces-1,NumSurfaces-1);
+          fprintf(geoFile,"Point(%i)={%e,%e,%e};\n",NumNodes++,E.XY[2*n+0],E.XY[2*n+1],0.0);
+
+        for(int n=0; n<NXY-1; n++)
+          fprintf(geoFile,"Line(%i)={%i,%i};\n",NumLines++,Node0+n,Node0+n+1);
+
+        fprintf(geoFile,"\n");
+        return;
       }
+
+     /* Closed entities: detect holes, then emit one Plane Surface with hole loops. */
+     PolygonLoopsResult P = SeparatePolygonLoops(E.XY, /*tol=*/1e-6);
+     /* Fallback: treat as a simple single-ring polygon. */
+     if ((int)P.outer.size() < 3)
+      {
+        P.outer = FlatXYToLoop(E.XY);
+        EnsureCCW(P.outer);
+      }
+     if (!P.holes.empty())
+       RemoveSharedCollinearVerticesInHoles(P.outer, P.holes, /*tol=*/1e-9, /*eps=*/1e-12);
+
+     std::vector<int> loopIDs;
+     loopIDs.reserve(1 + P.holes.size());
+
+     int outerLoopId = WriteGMSHClosedRing(geoFile, P.outer, NumNodes, NumLines, NumLineLoops);
+     if (outerLoopId >= 0)
+       loopIDs.push_back(outerLoopId);
+
+     for (size_t h=0; h<P.holes.size(); ++h)
+      {
+        int holeLoopId = WriteGMSHClosedRing(geoFile, P.holes[h], NumNodes, NumLines, NumLineLoops);
+        if (holeLoopId >= 0)
+          loopIDs.push_back(holeLoopId);
+      }
+
+     int SurfId = NumSurfaces++;
+     fprintf(geoFile, "Plane Surface(%i)={", SurfId);
+     for (size_t i=0; i<loopIDs.size(); ++i)
+       fprintf(geoFile, "%i%s", loopIDs[i], (i + 1 == loopIDs.size()) ? "};\n" : ",");
+
      fprintf(geoFile,"\n");
    }
 }
