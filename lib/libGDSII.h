@@ -232,6 +232,36 @@ void WriteGMSHEntity(Entity E, int Layer, const char *geoFileName, FILE **pgeoFi
                      const char *ppFileName=0, FILE **pppFile=0);
 void WriteGMSHFile(EntityTable ETable, iVec Layers, char *FileBase, bool SeparateLayers=false);
 
+/***************************************************************/
+/* Polygon-with-holes decomposition (PolygonLoops.cc)          */
+/* Converts flat GDS vertex walks that encode holes via shared  */
+/* "pinch" vertices into an outer ring + zero or more hole rings*/
+/***************************************************************/
+struct XY { double x; double y; XY():x(0),y(0){} XY(double a,double b):x(a),y(b){} };
+typedef std::vector<XY>       Loop;
+typedef std::vector<Loop>     LoopList;
+
+struct PolygonLoopsResult {
+  Loop     outer;   ///< outer boundary (open ring, CCW)
+  LoopList holes;   ///< interior holes (open rings, CW each)
+};
+
+Loop                FlatXYToLoop(const std::vector<double>& flatXY);
+std::vector<double> LoopToFlatXY(const Loop& loop);
+double              SignedArea(const Loop& ring);
+void                EnsureCCW(Loop& ring);
+void                EnsureCW(Loop& ring);
+
+/// Decompose a flat GDS vertex walk into outer + holes.
+/// tol==0 => exact match; tol>0 => quantised (round(x/tol), round(y/tol)).
+PolygonLoopsResult SeparatePolygonLoops(const Loop& path,                  double tol=0.0);
+PolygonLoopsResult SeparatePolygonLoops(const std::vector<double>& flatXY, double tol=0.0);
+
+/// Remove shared-but-collinear vertices from hole rings
+/// (prevents degenerate Gmsh CurveLoops).
+void RemoveSharedCollinearVerticesInHoles(const Loop& outer, LoopList& holes,
+                                          double tol=0.0, double eps=1e-12);
+
 } /* namespace libGDSII */
 
 /***************************************************************/
