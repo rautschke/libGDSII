@@ -236,7 +236,10 @@ void WriteGMSHFile(EntityTable ETable, iVec Layers, char *FileBase, bool Separat
 /* Polygon-with-holes decomposition (PolygonLoops.cc)          */
 /* Converts flat GDS vertex walks that encode holes via shared  */
 /* "pinch" vertices into an outer ring + zero or more hole rings*/
+/* Guard against redeclaration when PolygonLoops.h is included  */
+/* directly (e.g. from within the libGDSII translation units). */
 /***************************************************************/
+#ifndef LIBGDSII_POLYGON_LOOPS_H
 struct XY { double x; double y; XY():x(0),y(0){} XY(double a,double b):x(a),y(b){} };
 typedef std::vector<XY>       Loop;
 typedef std::vector<Loop>     LoopList;
@@ -261,6 +264,7 @@ PolygonLoopsResult SeparatePolygonLoops(const std::vector<double>& flatXY, doubl
 /// (prevents degenerate Gmsh CurveLoops).
 void RemoveSharedCollinearVerticesInHoles(const Loop& outer, LoopList& holes,
                                           double tol=0.0, double eps=1e-12);
+#endif /* LIBGDSII_POLYGON_LOOPS_H */
 
 } /* namespace libGDSII */
 
