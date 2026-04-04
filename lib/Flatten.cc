@@ -109,6 +109,7 @@ void AddBoundary(StatusData *SD, GDSIIData *Data, int ns, int ne)
   E.Text   = 0;
   E.Label  = strdup(Label);
   E.Closed = true;
+  E.DataType = e->DataType;
   for(int n=0; n<NXY-1; n++)
    GetPhysicalXY(SD, IXY[2*n+0], IXY[2*n+1], &(E.XY[2*n]), &(E.XY[2*n+1]));
 
@@ -137,6 +138,7 @@ void AddPath(StatusData *SD, GDSIIData *Data, int ns, int ne)
   E.Text   = 0;
   E.Label  = strdup(Label);
   E.Closed = (W!=0.0);
+  E.DataType = e->DataType;
   int NumNodes = (W==0.0 ? NXY : 2*NXY);
   E.XY.resize(2*NumNodes); 
 
@@ -192,6 +194,7 @@ void AddText(StatusData *SD, GDSIIData *Data, int ns, int ne)
   E.Text   = strdup(e->Text->c_str());
   E.Label  = strdup(Label);
   E.Closed = false;
+  E.DataType = e->DataType;
   SD->EntitiesThisLayer.push_back(E);
 }
 

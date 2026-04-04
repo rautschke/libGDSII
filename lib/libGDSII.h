@@ -125,6 +125,7 @@ typedef struct Entity
    dVec XY;      // vertex coordinates: 2 for a text string, 2N for an N-gon
    bool Closed;  // true if there exists an edge connecting the last to the first vertex
    char *Label;  // optional descriptive text, may be present or absent for polygons and texts
+   int DataType;  // GDS datatype of the originating element (0 = default)
  } Entity;
 
 typedef vector<Entity>     EntityList;
